@@ -23,6 +23,7 @@ venv/
 env/
 
 # Runtime artifacts
+media/
 *.log
 *.err
 
