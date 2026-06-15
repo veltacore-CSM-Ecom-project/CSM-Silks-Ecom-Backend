@@ -11,6 +11,7 @@ PROJECT_ROOT = BASE_DIR.parent
 try:
     from dotenv import load_dotenv
 
+    load_dotenv(BASE_DIR / ".env")
     load_dotenv(PROJECT_ROOT / ".env")
 except ImportError:
     pass
@@ -120,13 +121,16 @@ TIME_ZONE = "Asia/Kolkata"
 USE_I18N = True
 USE_TZ = True
 
-STATIC_URL = "static/"
+STATIC_URL = "/static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
-MEDIA_URL = "media/"
+MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 APPEND_SLASH = False
+
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+USE_X_FORWARDED_HOST = True
 
 CORS_ALLOWED_ORIGINS = [
     origin.strip()
@@ -140,6 +144,24 @@ CORS_ALLOWED_ORIGINS = [
     if origin.strip()
 ]
 CORS_ALLOW_CREDENTIALS = True
+CSRF_TRUSTED_ORIGINS = [
+    origin.strip()
+    for origin in os.getenv(
+        "CSRF_TRUSTED_ORIGINS",
+        os.getenv(
+            "ALLOWED_ORIGINS",
+            os.getenv(
+                "CORS_ALLOWED_ORIGINS",
+                "http://localhost:5173,http://localhost:3000,http://localhost:8080",
+            ),
+        ),
+    ).split(",")
+    if origin.strip()
+]
+
+if APP_ENV == "production":
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
 
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": (
