@@ -6,6 +6,7 @@ django-cors-headers==4.9.0
 django-filter==25.2
 drf-spectacular==0.29.0
 gunicorn==23.0.0
+whitenoise==6.8.2
 psycopg2-binary==2.9.10
 
 # Integrations

@@ -76,6 +76,8 @@ def public_products(params) -> QuerySet[Product]:
         return qs.order_by("-variants__price", "-is_featured").distinct()
     if sort == "discount":
         return qs.order_by(F("base_mrp") - F("base_price")).reverse()
+    if sort == "featured":
+        return qs.order_by("-is_featured", "-total_sold", "-created_at")
     if sort == "popularity":
         return qs.order_by("-total_sold", "-review_count", "-is_featured")
     if sort == "newest":

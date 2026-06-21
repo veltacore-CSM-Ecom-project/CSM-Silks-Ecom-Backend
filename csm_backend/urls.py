@@ -1,8 +1,8 @@
 from django.conf import settings
-from django.conf.urls.static import static
 from django.contrib import admin
 from django.http import JsonResponse
-from django.urls import include, path
+from django.urls import include, path, re_path
+from django.views.static import serve as media_serve
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 from accounts.views import AddressDetailView, AddressListCreateView
 
@@ -37,4 +37,7 @@ urlpatterns = [
     path("api/", include("shipping.urls")),
     path("api/", include("reviews.urls")),
     path("api/", include("ai.urls")),
-] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+    # Serve user-uploaded media from MEDIA_ROOT even under DEBUG=False
+    # (django.conf.urls.static.static() only registers when DEBUG is True).
+    re_path(r"^media/(?P<path>.*)$", media_serve, {"document_root": settings.MEDIA_ROOT}),
+]

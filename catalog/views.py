@@ -88,6 +88,7 @@ class CatalogFacetsView(APIView):
                 "occasions": occasions,
                 "price": price_bounds,
                 "sorts": [
+                    {"key": "featured", "label": "Featured"},
                     {"key": "popularity", "label": "Popularity"},
                     {"key": "price_asc", "label": "Price: Low to High"},
                     {"key": "price_desc", "label": "Price: High to Low"},

@@ -10,6 +10,7 @@ from accounts.models import Address
 from catalog.models import Category, Product, ProductImage, ProductVariant
 from inventory.models import StockLedger
 from loyalty.models import LoyaltyReward
+from notifications.models import Notification
 from reviews.models import ProductReview
 
 User = get_user_model()
@@ -321,6 +322,15 @@ PRODUCTS = [
 
 SERVICEABLE_PINS = ["600001", "600017", "631501", "560001", "400001", "110001", "500001", "700001"]
 
+MEN_SIZES = ["S", "M", "L", "XL", "XXL"]
+WOMEN_SIZES = ["Free Size", "36", "38", "40", "42"]
+
+# Extra Pexels IDs for gallery thumbs and client-side 360° frame stepping.
+GALLERY_FRAME_POOL = [
+    27575174, 29049358, 35108853, 28943610, 34107842, 7956933, 29049358, 35108853,
+    28943610, 34107842, 27575174, 29049358, 35108853, 28943610, 34107842,
+]
+
 
 class Command(BaseCommand):
     help = "Seed CSM Silks production-retailer demo data."
@@ -347,6 +357,9 @@ class Command(BaseCommand):
             is_staff=False,
             is_superuser=False,
         )
+        if customer.loyalty_points < 2500:
+            customer.loyalty_points = 2500
+            customer.save(update_fields=["loyalty_points"])
         address_defaults = {
             "full_name": "Test Customer",
             "phone": "+918888888888",
@@ -365,7 +378,7 @@ class Command(BaseCommand):
         else:
             Address.objects.create(user=customer, label="Home", **address_defaults)
 
-        for pdata in PRODUCTS:
+        for product_index, pdata in enumerate(PRODUCTS):
             slug, category_name, gender = pdata["category"]
             category, _ = Category.objects.get_or_create(slug=slug, defaults={"name": category_name, "gender": gender})
             product, _ = Product.objects.update_or_create(
@@ -411,41 +424,64 @@ class Command(BaseCommand):
                 },
             )
             color_name, color_hex = pdata["color"]
-            sku = "CSM-" + pdata["slug"].upper().replace("-", "-")[:42]
-            variant, _ = ProductVariant.objects.update_or_create(
-                sku=sku,
-                defaults={
-                    "product": product,
-                    "title": color_name,
-                    "color_name": color_name,
-                    "color_hex": color_hex,
-                    "size": "Free Size" if gender == "women" else "M-XL",
-                    "fabric": pdata["fabric"],
-                    "zari_type": pdata["zari"],
-                    "blouse_included": gender == "women",
-                    "length_meters": Decimal("6.30") if gender == "women" else None,
-                    "care_instructions": "Dry clean only",
-                    "price": Decimal(pdata["price"]),
-                    "mrp": Decimal(pdata["mrp"]),
-                    "cost_price": Decimal(pdata["price"]) * Decimal("0.65"),
-                    "stock_qty": pdata["stock"],
-                    "reorder_level": 5,
-                    "is_active": True,
-                },
-            )
-            StockLedger.objects.get_or_create(
-                variant=variant,
-                reason=StockLedger.Reason.SEED,
-                reference="seed",
-                defaults={"quantity_delta": pdata["stock"], "created_by": admin},
-            )
-            image_url = self._pexels_image(pdata["image"])
-            ProductImage.objects.update_or_create(
-                product=product,
-                variant=variant,
-                is_primary=True,
-                defaults={"image_url": image_url, "alt_text": product.name, "sort_order": 0},
-            )
+            size_options = WOMEN_SIZES if gender == "women" else MEN_SIZES
+            sku_prefix = ("CSM-" + pdata["slug"].upper().replace("-", "-"))[:36]
+            created_skus: list[str] = []
+            primary_variant = None
+            total_stock = int(pdata["stock"])
+            for size_idx, size_label in enumerate(size_options):
+                # Weight M / Free Size with slightly more stock for demo realism.
+                if gender == "women":
+                    stock_qty = max(2, total_stock // len(size_options))
+                    if size_label == "Free Size":
+                        stock_qty = max(stock_qty, total_stock - stock_qty * (len(size_options) - 1))
+                else:
+                    stock_qty = max(1, total_stock // len(size_options))
+                    if size_label == "M":
+                        stock_qty = max(stock_qty, total_stock - stock_qty * (len(size_options) - 1))
+                sku = f"{sku_prefix}-{size_label.replace(' ', '')}"[:60]
+                created_skus.append(sku)
+                variant, _ = ProductVariant.objects.update_or_create(
+                    sku=sku,
+                    defaults={
+                        "product": product,
+                        "title": f"{color_name} / {size_label}",
+                        "color_name": color_name,
+                        "color_hex": color_hex,
+                        "size": size_label,
+                        "fabric": pdata["fabric"],
+                        "zari_type": pdata["zari"],
+                        "blouse_included": gender == "women",
+                        "length_meters": Decimal("6.30") if gender == "women" else None,
+                        "care_instructions": "Dry clean only",
+                        "price": Decimal(pdata["price"]),
+                        "mrp": Decimal(pdata["mrp"]),
+                        "cost_price": Decimal(pdata["price"]) * Decimal("0.65"),
+                        "stock_qty": stock_qty,
+                        "reorder_level": 2,
+                        "is_active": True,
+                    },
+                )
+                if primary_variant is None:
+                    primary_variant = variant
+                StockLedger.objects.get_or_create(
+                    variant=variant,
+                    reason=StockLedger.Reason.SEED,
+                    reference="seed",
+                    defaults={"quantity_delta": stock_qty, "created_by": admin},
+                )
+            ProductVariant.objects.filter(product=product).exclude(sku__in=created_skus).delete()
+            frame_ids = self._frame_ids(pdata["image"], product_index)
+            ProductImage.objects.filter(product=product).delete()
+            for frame_idx, photo_id in enumerate(frame_ids):
+                ProductImage.objects.create(
+                    product=product,
+                    sort_order=frame_idx,
+                    variant=primary_variant if frame_idx == 0 else None,
+                    image_url=self._pexels_image(photo_id),
+                    alt_text=f"{product.name} — view {frame_idx + 1}",
+                    is_primary=frame_idx == 0,
+                )
             self._seed_reviews(product, customer)
 
         rewards = [
@@ -456,6 +492,7 @@ class Command(BaseCommand):
         for name, description, points, reward_type, value in rewards:
             LoyaltyReward.objects.get_or_create(name=name, defaults={"description": description, "points_required": points, "reward_type": reward_type, "reward_value": Decimal(value)})
 
+        self._seed_notifications(customer)
         self.stdout.write(self.style.SUCCESS("Seeded CSM Silks Django retailer data."))
         self.stdout.write("Admin: admin@csmsilks.com / admin123")
         self.stdout.write("Customer OTP phone: +918888888888")
@@ -472,6 +509,30 @@ class Command(BaseCommand):
 
     def _pexels_image(self, photo_id: int) -> str:
         return f"https://images.pexels.com/photos/{photo_id}/pexels-photo-{photo_id}.jpeg?auto=compress&cs=tinysrgb&w=1000"
+
+    def _frame_ids(self, primary_id: int, product_index: int) -> list[int]:
+        frames: list[int] = [primary_id]
+        pool_len = len(GALLERY_FRAME_POOL)
+        for step in range(5):
+            extra_id = GALLERY_FRAME_POOL[(product_index * 3 + step) % pool_len]
+            if extra_id not in frames:
+                frames.append(extra_id)
+        return frames[:6]
+
+    def _seed_notifications(self, customer) -> None:
+        samples = [
+            ("Your saree is on the way!", "Royal Kanjivaram Gold Zari · ETA Tomorrow by 7 PM", "shipping"),
+            ("You earned 650 loyalty points!", "Balance updated after your latest silk purchase.", "loyalty"),
+            ("Flash Sale — 10% off festive edits!", "Tussar and bridal picks now at special prices.", "promo"),
+            ("Order delivered successfully", "Rate your Kanjivaram experience from My Orders.", "order"),
+            ("Men's silk collection is live", "Pure silk dhotis, veshtis and wedding sets now in 360°.", "collection"),
+        ]
+        for title, body, notification_type in samples:
+            Notification.objects.get_or_create(
+                user=customer,
+                title=title,
+                defaults={"body": body, "notification_type": notification_type},
+            )
 
     def _seed_reviews(self, product: Product, customer) -> None:
         reviews = [

@@ -4,6 +4,9 @@ set -e
 echo "==> Running database migrations..."
 python manage.py migrate --noinput
 
+echo "==> Seeding catalog, loyalty, and demo notifications (idempotent)..."
+python manage.py seed_csm
+
 echo "==> Collecting static files..."
 python manage.py collectstatic --noinput --clear
 

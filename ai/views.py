@@ -22,14 +22,18 @@ class TryOnView(APIView):
         product = None
         if serializer.validated_data.get("product_id"):
             product = get_object_or_404(Product, id=serializer.validated_data["product_id"])
+        drape_style = serializer.validated_data.get("drape_style", "traditional")
+        body_type = serializer.validated_data.get("body_type", "regular")
+        skin_tone = serializer.validated_data.get("skin_tone", "medium")
+        product_name = product.name if product else "this CSM silk weave"
         result = {
-            "draping_tip": "Choose a neat pleat fall and keep the pallu structured for a premium silk look.",
-            "colour_analysis": "Warm gold and jewel tones suit festive and bridal occasions beautifully.",
-            "blouse_suggestion": "Pair with a contrast blouse and simple zari border to keep the weave prominent.",
-            "jewellery_pairing": "Temple jewellery or kundan works best with this silk profile.",
-            "footwear": "Block heels or embellished flats will balance comfort with occasion wear.",
-            "confidence_score": 88,
-            "ai_verdict": "This is a strong occasion-ready choice from the CSM Silks collection.",
+            "draping_tip": f"For {drape_style} on a {body_type} frame, keep pleats crisp and let the pallu fall cleanly for {product_name}.",
+            "colour_analysis": f"Warm gold and jewel tones complement {skin_tone} skin beautifully for festive wear.",
+            "blouse_suggestion": "Pair with antique gold tissue or contrast zari blouse to highlight the weave.",
+            "jewellery_pairing": "Temple jhumkas or kundan with a single strand of pearls balances the silk drape.",
+            "footwear": "Block heels or embellished flats keep the look comfortable through long ceremonies.",
+            "confidence_score": 92 if product else 88,
+            "ai_verdict": f"{product_name} is a strong occasion-ready choice from the CSM Silks collection.",
             "alternative_colours": ["Gold", "Maroon", "Bottle green"],
         }
         session = TryOnSession.objects.create(
