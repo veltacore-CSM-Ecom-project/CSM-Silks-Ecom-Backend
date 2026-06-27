@@ -18,7 +18,7 @@ def health(_request):
 
 
 urlpatterns = [
-    path("admin/django/", admin.site.urls),
+    path("admin/", admin.site.urls),
     path("health", health),
     path("api/health", health),
     path("api/schema", SpectacularAPIView.as_view(), name="schema"),

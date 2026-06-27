@@ -127,11 +127,41 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
 
-# Serve static assets (admin, DRF, Swagger) via WhiteNoise so they work with
-# DEBUG=False behind the ingress. Media (user uploads) is served by the explicit
-# /media view in urls.py from MEDIA_ROOT (a persistent PVC in k8s).
+# Static assets (admin, DRF, Swagger) are always served via WhiteNoise so they
+# work with DEBUG=False behind the ingress.
+#
+# Media (user uploads, e.g. the admin product-image endpoint that calls
+# default_storage.save()/.url()) uses one of two backends, chosen by MEDIA_STORAGE:
+#   - "s3"          -> S3-compatible object storage (MinIO in the wecrew cluster)
+#   - anything else -> local filesystem at MEDIA_ROOT (default; used in dev)
+# With S3, writes go to AWS_S3_ENDPOINT_URL (cluster-internal MinIO, no public DNS
+# dependency) while public read URLs are built from AWS_S3_CUSTOM_DOMAIN.
+MEDIA_STORAGE = os.getenv("MEDIA_STORAGE", "filesystem").lower()
+
+if MEDIA_STORAGE == "s3":
+    _default_storage = {
+        "BACKEND": "storages.backends.s3.S3Storage",
+        "OPTIONS": {
+            "bucket_name": os.getenv("AWS_STORAGE_BUCKET_NAME", "csm-media"),
+            "access_key": os.getenv("AWS_ACCESS_KEY_ID", ""),
+            "secret_key": os.getenv("AWS_SECRET_ACCESS_KEY", ""),
+            # endpoint used by the backend to PUT/GET objects (internal MinIO svc)
+            "endpoint_url": os.getenv("AWS_S3_ENDPOINT_URL", ""),
+            # host used to build public object URLs returned by .url() (e.g.
+            # "s3.csmsarees.com/csm-media"); bucket is public-read so no signing
+            "custom_domain": os.getenv("AWS_S3_CUSTOM_DOMAIN") or None,
+            "querystring_auth": False,
+            "file_overwrite": False,
+            "default_acl": None,
+            "addressing_style": "path",
+            "region_name": os.getenv("AWS_S3_REGION_NAME", "us-east-1"),
+        },
+    }
+else:
+    _default_storage = {"BACKEND": "django.core.files.storage.FileSystemStorage"}
+
 STORAGES = {
-    "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+    "default": _default_storage,
     "staticfiles": {"BACKEND": "whitenoise.storage.CompressedStaticFilesStorage"},
 }
 
